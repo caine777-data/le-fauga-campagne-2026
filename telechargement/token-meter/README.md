@@ -13,23 +13,33 @@ Le dépôt est privé : il faut que ton compte GitHub y ait accès.
 
 ## Ce qu'il fait
 
-- **Ligne de statut** : jauge de contexte, tokens du dernier tour, coût, limites 5 h / 7 j.
-- **Panneau `/tokens`** : catégories du contexte, totaux (entrée, cache lu/écrit, sortie), taux de cache, sous-agents, prévisions, garde-fou, conseils, courbe et détail des derniers tours.
-- **Bandeau d'alerte** dès 70 % de contexte : boutons *Compacter* (consigne de compaction prête), *Détails*, *Masquer*.
-- **Prévisions** : « 85 % de contexte dans ~N tours », « limite 5 h atteinte dans ~1 h 20 ».
-- **Alertes** : seuils 70 / 85 %, pics de consommation avec leur cause probable.
-- **Garde-fou de lecture** : retient une fois la lecture intégrale d'un gros fichier (> 80 Ko) et la relecture d'un fichier inchangé.
-  La lecture intégrale reste toujours possible : relancer la même lecture, lire par tranches, écrire « en entier / intégral / relecture totale » dans la demande, ou `/tokens-garde` pour couper le garde-fou.
+- **Icône cliquable** discrète au-dessus de la zone de saisie : `◑ 48%`. Elle se remplit avec le contexte (○ ◔ ◑ ◕ ●) et s'allume à partir de 70 %. Un clic ouvre ou ferme le widget.
+- **Widget à la demande** (clic sur l'icône ou `/tokens`, Échap pour fermer), en 4 onglets (touches 1 à 4) :
+  - **Aperçu** : jauge de contexte, coût de la session, dernier tour, taux de cache, limites 5 h / 7 j, prévisions, conseil du moment ;
+  - **Contexte** : répartition par catégorie et conseils ;
+  - **Tours** : courbe et détail des derniers tours ;
+  - **Garde-fou** : compteurs et bouton pour le couper ou l'activer.
+- **Discret** : rien d'affiché en permanence, à part l'icône. Deux notifications seulement : contexte à 85 % et tour anormalement coûteux.
+- **Garde-fou de lecture** : retient une fois la lecture intégrale d'un gros fichier (> 80 Ko) et la relecture d'un fichier inchangé. La lecture intégrale reste toujours possible : relancer la même lecture, lire par tranches, écrire « en entier / intégral / relecture totale » dans la demande, ou `/tokens-garde`.
 - **Skill `economie-tokens`** : diagnostic symptôme → cause → geste, leviers classés, conseils pour le travail sur manuscrit.
 
 ## Commandes
 
 | Commande | Effet |
 |---|---|
-| `/tokens` | Ouvre le panneau |
-| `/tokens-conseils` | Diagnostic express |
+| `/tokens` | Ouvre / ferme le widget |
 | `/tokens-garde` | Active / coupe le garde-fou de lecture |
 | `/tokens-reset` | Remet l'historique à zéro |
+
+## Mise à jour
+
+Remplacer le dossier par la nouvelle version, puis dans Claude Code :
+
+```
+/plugin marketplace update token-meter
+```
+
+et redémarrer Claude Code.
 
 ## Développement
 

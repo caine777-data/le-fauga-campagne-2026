@@ -1,10 +1,24 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Gauge, GuardStats, Samples, Totals, TurnRecord } from '../types'
-import { duration, limitEta, turnsUntil } from './forecast'
+import type { Samples, Tab, Totals, TurnRecord } from '../types'
 import { forgetLoop, judgeRead, readKey, wantsFullRead } from './guard'
 import type { GuardMemory } from './guard'
+import {
+  LIMIT_LABEL,
+  advice,
+  bar,
+  cacheHit,
+  fmt,
+  forecastLines,
+  levelColor,
+  sparkline,
+  spikeNote,
+  sumTotals,
+  turnTotal,
+} from './model'
+
+export { advice, spikeNote } from './model'
 
 const PANE = 'token-meter'
 const ZERO: Totals = { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, turns: 0 }
@@ -17,7 +31,6 @@ const gauge = atom({ plugin: 'token-meter', key: 'gauge' } as const, {
   limits: [],
   categories: [],
 })
-
 const guard = atom({ plugin: 'token-meter', key: 'guard' } as const, {
   isOn: true,
   big: 0,
@@ -26,146 +39,41 @@ const guard = atom({ plugin: 'token-meter', key: 'guard' } as const, {
   savedBytes: 0,
 })
 const samples = atom({ plugin: 'token-meter', key: 'samples' } as const, { context: [], limits: {} })
-const bandHidden = atom({ plugin: 'token-meter', key: 'bandHidden' } as const, 0)
+const widget = atom({ plugin: 'token-meter', key: 'widget' } as const, { isOpen: false, tab: 'apercu' })
 
-const COMPACT_HINT =
-  'Garde : les décisions prises, les fichiers et chapitres en cours avec leur état, les consignes de style ' +
-  "données par l'utilisateur, la prochaine étape. Jette : le contenu brut des fichiers lus et des sorties " +
-  "d'outils déjà exploitées (garde seulement leurs conclusions)."
+const TABS: { tab: Tab; label: string; hotkey: string }[] = [
+  { tab: 'apercu', label: 'Aperçu', hotkey: '1' },
+  { tab: 'contexte', label: 'Contexte', hotkey: '2' },
+  { tab: 'tours', label: 'Tours', hotkey: '3' },
+  { tab: 'garde', label: 'Garde-fou', hotkey: '4' },
+]
 
-/** The forecast lines the figures support: context and each rate-limit window. */
-export const forecastLines = (g: Gauge, smp: Samples, now: number): string[] => {
-  const out: string[] = []
-  const p = g.percent ?? 0
-  const target = p < 70 ? 70 : 85
-  const n = turnsUntil(smp.context, target)
-  if (n !== undefined) out.push(`${target} % de contexte dans ~${n} tour${n > 1 ? 's' : ''}`)
-  for (const l of g.limits) {
-    const eta = limitEta(smp.limits[l.kind] ?? [], now, l.resetsAt)
-    if (eta !== undefined) out.push(`limite ${LIMIT_LABEL[l.kind] ?? l.kind} atteinte dans ~${duration(eta)}`)
+/** ○ ◔ ◑ ◕ ●: the launcher fills with the context. */
+export const fillGlyph = (percent: number | undefined): string =>
+  percent === undefined ? '◇' : (['○', '◔', '◑', '◕', '●'][Math.min(4, Math.round(percent / 25))] ?? '●')
+
+async function toggleWidget($: EngineInterface): Promise<boolean> {
+  const w = await read($, widget)
+  if (w.isOpen) {
+    await $.ui.close({ id: PANE })
+    await update($, widget, x => ({ ...x, isOpen: false }))
+    return false
   }
-  return out
-}
-
-const SPARK = '▁▂▃▄▅▆▇█'
-
-/** 1234 → "1.2k", 1234567 → "1.23M". */
-export const fmt = (n: number): string =>
-  n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : `${n}`
-
-export const bar = (percent: number, width: number): string => {
-  const filled = Math.max(0, Math.min(width, Math.round((percent / 100) * width)))
-  return '█'.repeat(filled) + '░'.repeat(width - filled)
-}
-
-export const sparkline = (values: number[]): string => {
-  const max = Math.max(1, ...values)
-  return values
-    .map(v => SPARK[Math.min(SPARK.length - 1, Math.floor((v / max) * (SPARK.length - 1)))])
-    .join('')
-}
-
-export const turnTotal = (t: TurnRecord): number =>
-  t.input + t.cacheRead + t.cacheWrite + t.output
-
-const sumTotals = (t: Totals): number => t.input + t.cacheRead + t.cacheWrite + t.output
-
-/** Share of input tokens served by the prompt cache. */
-const cacheHit = (t: Totals): number => {
-  const inSide = t.input + t.cacheRead + t.cacheWrite
-  return inSide === 0 ? 0 : Math.round((t.cacheRead / inSide) * 100)
-}
-
-const levelColor = (percent: number): string =>
-  percent >= 85 ? 'error' : percent >= 60 ? 'warning' : 'success'
-
-const LIMIT_LABEL: Record<string, string> = { five_hour: '5h', seven_day: '7j', spend_limit: 'budget' }
-
-const statusLine = (g: Gauge, last: TurnRecord | undefined): string => {
-  const parts: string[] = []
-  if (g.percent !== undefined) {
-    parts.push(`ctx ${bar(g.percent, 10)} ${g.percent}% (${fmt(g.tokens ?? 0)}/${fmt(g.window)})`)
-  }
-  if (last) parts.push(`dernier tour ${fmt(turnTotal(last))} (↑${fmt(last.output)})`)
-  if (g.usd !== undefined) parts.push(`$${g.usd.toFixed(2)}`)
-  for (const l of g.limits) parts.push(`${LIMIT_LABEL[l.kind] ?? l.kind} ${l.percentUsed}%`)
-  return parts.join(' · ')
-}
-
-const median = (values: number[]): number => {
-  const sorted = [...values].sort((a, b) => a - b)
-  return sorted[Math.floor(sorted.length / 2)] ?? 0
-}
-
-/** Why a main-loop turn stands out against the ones before it, if it does. */
-export const spikeNote = (rec: TurnRecord, before: TurnRecord[]): string | undefined => {
-  if (before.length < 5) return undefined
-  const typical = median(before.slice(-20).map(turnTotal))
-  const total = turnTotal(rec)
-  if (typical === 0 || total < 3 * typical || total < 20_000) return undefined
-  const why =
-    rec.cacheWrite > rec.cacheRead
-      ? 'surtout du cache réécrit (pause trop longue ou contexte modifié ?)'
-      : rec.output > total / 3
-        ? 'surtout de la sortie (réponse ou réécriture longue)'
-        : 'surtout de la lecture (gros fichier ou résultat d\'outil)'
-  return `Pic : ${fmt(total)} tokens sur ce tour (×${Math.round(total / typical)} l'habituel), ${why}.`
-}
-
-/** The few actionable hints the figures support right now, most urgent first. */
-export const advice = (g: Gauge, m: Totals, s: Totals): string[] => {
-  const out: string[] = []
-  const p = g.percent ?? 0
-  if (p >= 85) out.push(`Contexte à ${p}% : /compact maintenant (en disant quoi garder), ou /clear si la tâche est finie.`)
-  else if (p >= 70) out.push(`Contexte à ${p}% : prévois un /compact avec consigne avant la prochaine grosse étape.`)
-
-  const top = g.categories[0]
-  const used = g.categories.reduce((n, c) => n + c.tokens, 0)
-  if (top && used > 0 && top.tokens / used >= 0.4) {
-    const name = top.name.toLowerCase()
-    const hint = name.includes('message')
-      ? '/clear entre tâches sans lien, après avoir noté l\'acquis dans un fichier.'
-      : name.includes('mcp')
-        ? 'désactive les connecteurs MCP inutiles pour ce projet.'
-        : name.includes('skill')
-          ? 'retire les skills que tu n\'utilises pas : leurs descriptions sont relues à chaque tour.'
-          : name.includes('memory')
-            ? 'raccourcis CLAUDE.md ; garde le détail dans des fichiers lus à la demande.'
-            : name.includes('tool')
-              ? 'outillage permanent lourd : allège connecteurs et plugins.'
-              : undefined
-    if (hint) out.push(`${top.name} = ${Math.round((top.tokens / used) * 100)}% du contexte : ${hint}`)
-  }
-
-  if (m.turns >= 3 && m.input + m.cacheRead + m.cacheWrite > 50_000 && cacheHit(m) < 50) {
-    out.push(`Cache à ${cacheHit(m)}% : évite de modifier CLAUDE.md/skills en cours de session et les longues pauses sur un gros contexte.`)
-  }
-  const sTotal = sumTotals(s)
-  if (sTotal > 0 && sTotal > sumTotals(m)) {
-    out.push('Les sous-agents consomment plus que le fil principal : délègue seulement les balayages larges.')
-  }
-  for (const l of g.limits) {
-    if (l.percentUsed >= 80) out.push(`Limite ${LIMIT_LABEL[l.kind] ?? l.kind} à ${l.percentUsed}% : modèle plus léger pour les tâches mécaniques.`)
-  }
-  return out.slice(0, 4)
-}
-
-async function refreshStatus($: EngineInterface): Promise<void> {
-  const g = await read($, gauge)
-  const list = await read($, turns)
-  const last = [...list].reverse().find(t => t.agentId === undefined)
-  const text = statusLine(g, last)
-  $.ui.status(text === '' ? undefined : text)
+  await update($, widget, x => ({ ...x, isOpen: true }))
+  await $.ui.open({ id: PANE, title: 'Tokens', focus: true, closeOnEscape: true })
+  return true
 }
 
 export const register: Register = on => {
   const mem: GuardMemory = { seen: new Map(), held: new Set() }
   const heldBig = new Map<string, number>()
   let isFullReadTurn = false
+  let hasWarned = false
+
+  // ── Garde-fou de lecture ────────────────────────────────────────────────
 
   on('prompt.submit', ($, e, next) => {
     isFullReadTurn = wantsFullRead(e.text)
-    if (isFullReadTurn) $.ui.toast('token-meter : lecture intégrale demandée, garde-fou de taille suspendu pour ce tour.')
 
     return next(e)
   }).catch(($, e, next) => next(e))
@@ -203,7 +111,6 @@ export const register: Register = on => {
   on('session.compact', async ($, e, next) => {
     const result = await next(e)
     if (e.trigger !== 'precompute' && 'messages' in result && result.messages) forgetLoop(mem, e.agentId)
-    if (e.agentId === undefined && e.trigger !== 'precompute') await update($, bandHidden, () => 0)
 
     return result
   }).catch(($, e, next) => next(e))
@@ -214,33 +121,30 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // ── Commandes ───────────────────────────────────────────────────────────
+
   on('session.start', async ($, e, next) => {
-    await $.command.register({
-      name: 'tokens',
-      description: 'Ouvre le panneau de consommation de tokens',
-    })
-    await $.command.register({
-      name: 'tokens-reset',
-      description: "Remet à zéro l'historique de tokens du panneau",
-    })
+    await $.command.register({ name: 'tokens', description: 'Ouvre ou ferme le widget de consommation de tokens' })
     await $.command.register({
       name: 'tokens-garde',
       description: 'Active ou coupe le garde-fou de lecture (grosses lectures, relectures)',
     })
-    await $.command.register({
-      name: 'tokens-conseils',
-      description: 'Diagnostic rapide : quoi faire pour économiser des tokens maintenant',
-    })
-    await refreshStatus($)
+    await $.command.register({ name: 'tokens-reset', description: "Remet à zéro l'historique du widget" })
+    $.ui.status(undefined)
 
     return next(e)
   })
 
-  on('command.run', { command: 'tokens-conseils' }, async $ => {
-    const tips = advice(await read($, gauge), await read($, main), await read($, sub))
-    const body = tips.length === 0 ? 'Rien à signaler : la consommation est saine.' : tips.map(t => `• ${t}`).join('\n')
+  on('command.run', { command: 'tokens' }, async $ =>
+    (await toggleWidget($))
+      ? { text: 'Widget Tokens ouvert (1-4 pour les onglets, Échap pour fermer).' }
+      : { text: 'Widget Tokens fermé.' },
+  )
 
-    return { text: `${body}\nPour un diagnostic détaillé, demande à Claude d'utiliser la skill economie-tokens.` }
+  on('ui.close', async ($, e, next) => {
+    if (e.id === PANE) await update($, widget, x => ({ ...x, isOpen: false }))
+
+    return next(e)
   })
 
   on('command.run', { command: 'tokens-garde' }, async $ => {
@@ -253,73 +157,59 @@ export const register: Register = on => {
     }
   })
 
-  on('command.run', { command: 'tokens' }, async $ => {
-    await $.ui.open({ id: PANE, title: 'Tokens' })
-
-    return { text: 'Panneau Tokens ouvert.' }
-  })
-
   on('command.run', { command: 'tokens-reset' }, async $ => {
     await update($, turns, () => [])
     await update($, main, () => ZERO)
     await update($, sub, () => ZERO)
-    await refreshStatus($)
 
     return { text: 'Historique de tokens remis à zéro.' }
   })
 
+  // ── Mesures ─────────────────────────────────────────────────────────────
+
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
     const usage = e.usage ?? result.usage
-    if (usage) {
-      const rec: TurnRecord = {
-        id: e.turnId,
-        agentId: e.agentId,
-        model: usage.model,
-        durationMs: e.durationMs,
-        input: usage.input_tokens,
-        cacheRead: usage.cache_read_input_tokens,
-        cacheWrite: usage.cache_creation_input_tokens,
-        output: usage.output_tokens,
+    if (!usage) return result
+
+    const rec: TurnRecord = {
+      id: e.turnId,
+      agentId: e.agentId,
+      model: usage.model,
+      durationMs: e.durationMs,
+      input: usage.input_tokens,
+      cacheRead: usage.cache_read_input_tokens,
+      cacheWrite: usage.cache_creation_input_tokens,
+      output: usage.output_tokens,
+    }
+    if (rec.agentId === undefined) {
+      const before = (await read($, turns)).filter(t => t.agentId === undefined)
+      if (spikeNote(rec, before) && !(await read($, widget)).isOpen) {
+        $.ui.toast(`Tour coûteux : ${fmt(turnTotal(rec))} tokens. /tokens pour le détail.`)
       }
-      if (rec.agentId === undefined) {
-        const before = (await read($, turns)).filter(t => t.agentId === undefined)
-        const note = spikeNote(rec, before)
-        if (note) $.ui.toast(note)
-      }
-      await update($, turns, list => [...list, rec].slice(-200))
-      const add = (t: Totals): Totals => ({
-        input: t.input + rec.input,
-        cacheRead: t.cacheRead + rec.cacheRead,
-        cacheWrite: t.cacheWrite + rec.cacheWrite,
-        output: t.output + rec.output,
-        turns: t.turns + 1,
-      })
-      if (rec.agentId === undefined) {
-        await update($, main, add)
-      } else {
-        await update($, sub, add)
-      }
-      await refreshStatus($)
+    }
+    await update($, turns, list => [...list, rec].slice(-200))
+    const add = (t: Totals): Totals => ({
+      input: t.input + rec.input,
+      cacheRead: t.cacheRead + rec.cacheRead,
+      cacheWrite: t.cacheWrite + rec.cacheWrite,
+      output: t.output + rec.output,
+      turns: t.turns + 1,
+    })
+    if (rec.agentId === undefined) {
+      await update($, main, add)
+    } else {
+      await update($, sub, add)
     }
 
     return result
   })
 
-  let alerted = 0
-
   on('session.measure', async ($, e, next) => {
     const p = e.context.percent
     if (p !== undefined) {
-      const level = p >= 85 ? 85 : p >= 70 ? 70 : 0
-      if (level > alerted) {
-        $.ui.toast(
-          level === 85
-            ? `Contexte à ${p}% : /compact maintenant (dis quoi garder) ou /clear.`
-            : `Contexte à ${p}% : pense à /compact avec consigne. /tokens-conseils pour le détail.`,
-        )
-      }
-      alerted = level
+      if (p >= 85 && !hasWarned) $.ui.toast(`Contexte à ${p}% : /compact conseillé. /tokens pour le détail.`)
+      hasWarned = p >= 85
     }
     const now = await $.clock.now()
     await update($, samples, smp => {
@@ -351,164 +241,252 @@ export const register: Register = on => {
       limits: e.rateLimits.map(l => ({ kind: l.kind, percentUsed: l.percentUsed, resetsAt: l.resetsAt })),
       categories,
     }))
-    await refreshStatus($)
 
     return next(e)
   })
 
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const g = await read($, gauge)
-    const p = g.percent ?? 0
-    const level = p >= 85 ? 85 : p >= 70 ? 70 : 0
-    if (e.props.hasSurvey || level === 0 || (await read($, bandHidden)) >= level) return next(e)
+  // ── Icône ───────────────────────────────────────────────────────────────
 
-    const { Box, Button, Text } = $.ui.resolve(e)
-    const ahead = forecastLines(g, await read($, samples), await $.clock.now())
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.props.hasSurvey) return next(e)
+    const { Box, Button } = $.ui.resolve(e)
+    const g = await read($, gauge)
+    const isOpen = (await read($, widget)).isOpen
+    const label = `${fillGlyph(g.percent)} ${g.percent === undefined ? 'tokens' : `${g.percent}%`}`
 
     return (
-      <Box flexDirection="column">
-        <Text>
-          <Text color={levelColor(p)} bold>
-            ⚠ Contexte {p}%
-          </Text>{' '}
-          <Text color={levelColor(p)}>{bar(p, 12)}</Text>
-          {ahead.length > 0 && <Text dimColor> · {ahead.join(' · ')}</Text>}
-        </Text>
-        <Box>
-          {!e.props.isWorking && (
-            <Button
-              key="compact"
-              label="Compacter"
-              onPress={async () => {
-                $.ui.toast('Compaction en cours…')
-                await $.session.compact({ instructions: COMPACT_HINT })
-              }}
-            />
-          )}
-          <Text> </Text>
-          <Button key="details" label="Détails" onPress={() => $.ui.open({ id: PANE, title: 'Tokens' })} />
-          <Text> </Text>
-          <Button key="hide" label="Masquer" onPress={() => update($, bandHidden, () => level)} />
-        </Box>
+      <Box justifyContent="flex-end">
+        <Button
+          key="launcher"
+          label={isOpen ? `${label} ✕` : label}
+          plain
+          dimColor={!isOpen && (g.percent ?? 0) < 70}
+          onPress={() => toggleWidget($)}
+        />
       </Box>
     )
   })
 
+  // ── Widget ──────────────────────────────────────────────────────────────
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
+    const w = await read($, widget)
     const g = await read($, gauge)
     const list = await read($, turns)
     const m = await read($, main)
     const s = await read($, sub)
-    const cols = Math.max(30, (e.viewport?.columns ?? 60) - 4)
-    const rows = Math.max(6, (e.viewport?.rows ?? 30) - 4)
-    const barWidth = Math.max(10, Math.min(40, cols - 22))
-    const mainTurns = list.filter(t => t.agentId === undefined)
-    const recent = list.slice(-Math.max(3, rows - 24)).reverse()
-    const tips = advice(g, m, s)
-    const ahead = forecastLines(g, await read($, samples), await $.clock.now())
-    const gs: GuardStats = await read($, guard)
-    const catTotal = g.categories.reduce((n, c) => n + c.tokens, 0)
+    const gs = await read($, guard)
+    const smp = await read($, samples)
+    const now = await $.clock.now()
 
-    return (
-      <Box flexDirection="column">
-        <Text bold>Fenêtre de contexte</Text>
-        {g.percent === undefined ? (
-          <Text dimColor>Pas encore de réponse mesurée.</Text>
-        ) : (
+    const width = Math.max(36, Math.min(72, (e.viewport?.columns ?? 60) - 2))
+    const inner = width - 4
+    const p = g.percent ?? 0
+    const mainTurns = list.filter(t => t.agentId === undefined)
+    const last = mainTurns[mainTurns.length - 1]
+
+    const Label = (props: { children: string }) => <Text dimColor>{props.children}</Text>
+
+    /** One figure in a small rounded box. */
+    const Tile = (props: { title: string; value: string; note?: string; color?: string }) => (
+      <Box borderStyle="round" borderDimColor flexDirection="column" paddingX={1} flexGrow={1}>
+        <Text dimColor>{props.title}</Text>
+        <Text bold color={props.color}>
+          {props.value}
+        </Text>
+        {props.note !== undefined && <Text dimColor>{props.note}</Text>}
+      </Box>
+    )
+
+    const tabs = (
+      <Box gap={1}>
+        {TABS.map(t => (
+          <Button
+            key={`tab-${t.tab}`}
+            label={t.label}
+            hotkey={t.hotkey}
+            plain
+            dimColor={w.tab !== t.tab}
+            onPress={() => update($, widget, x => ({ ...x, tab: t.tab }))}
+          />
+        ))}
+      </Box>
+    )
+
+    const gaugeRow =
+      g.percent === undefined ? (
+        <Label>En attente de la première réponse…</Label>
+      ) : (
+        <Box flexDirection="column">
+          <Box justifyContent="space-between">
+            <Text bold>Contexte</Text>
+            <Text>
+              <Text bold color={levelColor(p)}>
+                {p}%
+              </Text>
+              <Text dimColor>
+                {'  '}
+                {fmt(g.tokens ?? 0)} / {fmt(g.window)}
+              </Text>
+            </Text>
+          </Box>
+          <Text color={levelColor(p)}>{bar(p, inner)}</Text>
+        </Box>
+      )
+
+    const overview = (
+      <Box flexDirection="column" gap={1}>
+        {gaugeRow}
+        <Box gap={1}>
+          <Tile title="Session" value={g.usd !== undefined ? `$${g.usd.toFixed(2)}` : fmt(sumTotals(m))} note={`${m.turns} tours`} />
+          <Tile title="Dernier tour" value={last ? fmt(turnTotal(last)) : '–'} note={last ? `↑ ${fmt(last.output)} sortie` : undefined} />
+          <Tile
+            title="Cache"
+            value={m.turns ? `${cacheHit(m)}%` : '–'}
+            color={m.turns ? (cacheHit(m) >= 70 ? 'success' : cacheHit(m) >= 40 ? 'warning' : 'error') : undefined}
+            note="relu du cache"
+          />
+        </Box>
+        {g.limits.length > 0 && (
+          <Box flexDirection="column">
+            {g.limits.map(l => (
+              <Box justifyContent="space-between">
+                <Label>{`Limite ${LIMIT_LABEL[l.kind] ?? l.kind}`}</Label>
+                <Text>
+                  <Text color={levelColor(l.percentUsed)}>{bar(l.percentUsed, 16)}</Text> {l.percentUsed}%
+                </Text>
+              </Box>
+            ))}
+          </Box>
+        )}
+        {forecastLines(g, smp, now).map(f => (
+          <Text color="warning">◷ {f}</Text>
+        ))}
+        {advice(g, m, s).slice(0, 1).map(t => (
           <Text>
-            <Text color={levelColor(g.percent)}>{bar(g.percent, barWidth)}</Text> {g.percent}%{' '}
-            <Text dimColor>
-              {fmt(g.tokens ?? 0)} / {fmt(g.window)}
+            <Text color="claude">➜ </Text>
+            {t}
+          </Text>
+        ))}
+      </Box>
+    )
+
+    const catTotal = g.categories.reduce((n, c) => n + c.tokens, 0)
+    const context = (
+      <Box flexDirection="column" gap={1}>
+        {gaugeRow}
+        {g.categories.length === 0 ? (
+          <Label>Répartition disponible après la première réponse.</Label>
+        ) : (
+          <Box flexDirection="column">
+            {g.categories.slice(0, 8).map(c => {
+              const share = catTotal ? Math.round((c.tokens / catTotal) * 100) : 0
+              return (
+                <Box justifyContent="space-between">
+                  <Text>
+                    <Text color={c.color}>●</Text> {c.name.slice(0, 20)}
+                  </Text>
+                  <Text>
+                    <Text color={c.color}>{bar(share, 12)}</Text>
+                    <Text dimColor>
+                      {' '}
+                      {fmt(c.tokens).padStart(6)} {String(share).padStart(3)}%
+                    </Text>
+                  </Text>
+                </Box>
+              )
+            })}
+          </Box>
+        )}
+        {advice(g, m, s).map(t => (
+          <Text>
+            <Text color="claude">➜ </Text>
+            {t}
+          </Text>
+        ))}
+      </Box>
+    )
+
+    const recent = list.slice(-8).reverse()
+    const tours = (
+      <Box flexDirection="column" gap={1}>
+        {mainTurns.length === 0 ? (
+          <Label>Aucun tour terminé pour l'instant.</Label>
+        ) : (
+          <Box flexDirection="column">
+            <Label>Tokens par tour</Label>
+            <Text color="claude">{sparkline(mainTurns.slice(-inner).map(turnTotal))}</Text>
+          </Box>
+        )}
+        {recent.length > 0 && (
+          <Box flexDirection="column">
+            <Box justifyContent="space-between">
+              <Label>Tour</Label>
+              <Label>total   entrée    cache   sortie</Label>
+            </Box>
+            {recent.map((t, i) => (
+              <Box justifyContent="space-between">
+                <Text dimColor={t.agentId !== undefined}>
+                  {t.agentId !== undefined ? '↳ sous-agent' : i === 0 ? '● dernier' : '○'} <Text dimColor>{Math.round(t.durationMs / 1000)}s</Text>
+                </Text>
+                <Text dimColor={t.agentId !== undefined}>
+                  <Text bold>{fmt(turnTotal(t)).padStart(6)}</Text>
+                  {fmt(t.input + t.cacheWrite).padStart(8)}
+                  <Text dimColor>{fmt(t.cacheRead).padStart(9)}</Text>
+                  {fmt(t.output).padStart(9)}
+                </Text>
+              </Box>
+            ))}
+          </Box>
+        )}
+        <Box justifyContent="space-between">
+          <Label>{`Principal ${fmt(sumTotals(m))}`}</Label>
+          {s.turns > 0 && <Label>{`Sous-agents ${fmt(sumTotals(s))}`}</Label>}
+        </Box>
+      </Box>
+    )
+
+    const garde = (
+      <Box flexDirection="column" gap={1}>
+        <Box justifyContent="space-between">
+          <Text>
+            Garde-fou de lecture{' '}
+            <Text bold color={gs.isOn ? 'success' : 'inactive'}>
+              {gs.isOn ? '● actif' : '○ coupé'}
             </Text>
           </Text>
-        )}
-        {g.categories.slice(0, 6).map(c => (
-          <Text>
-            {'  '}
-            <Text color={c.color}>■</Text> {c.name.padEnd(18).slice(0, 18)}{' '}
-            {fmt(c.tokens).padStart(7)}{' '}
-            <Text dimColor>{catTotal ? Math.round((c.tokens / catTotal) * 100) : 0}%</Text>
+          <Button
+            key="guard-toggle"
+            label={gs.isOn ? 'Couper' : 'Activer'}
+            hotkey="g"
+            onPress={() => update($, guard, x => ({ ...x, isOn: !x.isOn }))}
+          />
+        </Box>
+        <Box gap={1}>
+          <Tile title="Lectures retenues" value={String(gs.big)} />
+          <Tile title="Relectures évitées" value={String(gs.reread)} />
+          <Tile title="Épargnés" value={`≈ ${fmt(Math.round(gs.savedBytes / 4))}`} color="success" />
+        </Box>
+        <Label>
+          Lecture intégrale toujours possible : Claude relance la même lecture, lit par tranches, ou tu écris « en entier » /
+          « relecture totale » dans ta demande.
+        </Label>
+      </Box>
+    )
+
+    const body = w.tab === 'contexte' ? context : w.tab === 'tours' ? tours : w.tab === 'garde' ? garde : overview
+
+    return (
+      <Box borderStyle="round" borderColor="claude" flexDirection="column" paddingX={1} width={width} gap={1}>
+        <Box justifyContent="space-between">
+          <Text bold color="claude">
+            ◆ Tokens
           </Text>
-        ))}
-
-        <Text> </Text>
-        <Text bold>Session</Text>
-        {g.usd !== undefined && <Text>Coût : ${g.usd.toFixed(3)}</Text>}
-        {g.limits.map(l => (
-          <Text>
-            Limite {LIMIT_LABEL[l.kind] ?? l.kind} :{' '}
-            <Text color={levelColor(l.percentUsed)}>{bar(l.percentUsed, 10)}</Text> {l.percentUsed}%
-            {l.resetsAt && <Text dimColor> (reset {l.resetsAt.slice(11, 16)})</Text>}
-          </Text>
-        ))}
-        <Text>
-          Principal ({m.turns} tours) : <Text bold>{fmt(sumTotals(m))}</Text>
-        </Text>
-        <Text dimColor>
-          {'  '}entrée {fmt(m.input)} · cache lu {fmt(m.cacheRead)} · cache écrit {fmt(m.cacheWrite)} · sortie{' '}
-          {fmt(m.output)}
-        </Text>
-        <Text dimColor>{'  '}taux de cache : {cacheHit(m)}%</Text>
-        {s.turns > 0 && (
-          <Text>
-            Sous-agents ({s.turns} tours) : <Text bold>{fmt(sumTotals(s))}</Text>{' '}
-            <Text dimColor>(sortie {fmt(s.output)})</Text>
-          </Text>
-        )}
-
-        {ahead.length > 0 && (
-          <Box flexDirection="column">
-            <Text> </Text>
-            <Text bold>Prévisions</Text>
-            {ahead.map(t => (
-              <Text>
-                ⏱ <Text color="warning">{t}</Text>
-              </Text>
-            ))}
-          </Box>
-        )}
-
-        <Text> </Text>
-        <Text bold>
-          Garde-fou de lecture{' '}
-          <Text color={gs.isOn ? 'success' : 'inactive'}>{gs.isOn ? 'actif' : 'coupé'}</Text>
-        </Text>
-        <Text dimColor>
-          {'  '}{gs.big} grosse(s) lecture(s) retenue(s) · {gs.reread} relecture(s) évitée(s) · {gs.overridden}{' '}
-          forcée(s) · ≈ {fmt(Math.round(gs.savedBytes / 4))} tokens épargnés
-        </Text>
-
-        {tips.length > 0 && (
-          <Box flexDirection="column">
-            <Text> </Text>
-            <Text bold color="warning">Conseils</Text>
-            {tips.map(t => (
-              <Text>• {t}</Text>
-            ))}
-          </Box>
-        )}
-
-        {mainTurns.length > 0 && (
-          <Box flexDirection="column">
-            <Text> </Text>
-            <Text bold>Tokens par tour</Text>
-            <Text color="claude">{sparkline(mainTurns.slice(-cols).map(turnTotal))}</Text>
-          </Box>
-        )}
-
-        <Text> </Text>
-        <Text bold>Derniers tours</Text>
-        {recent.length === 0 && <Text dimColor>Aucun tour terminé.</Text>}
-        {recent.map(t => (
-          <Text dimColor={t.agentId !== undefined}>
-            {t.agentId !== undefined ? '↳ ' : '• '}
-            {fmt(turnTotal(t)).padStart(7)} <Text dimColor>↓{fmt(t.input + t.cacheWrite).padStart(6)}</Text>{' '}
-            <Text dimColor>⚡{fmt(t.cacheRead).padStart(6)}</Text> ↑{fmt(t.output).padStart(6)}{' '}
-            <Text dimColor>{(t.durationMs / 1000).toFixed(0)}s</Text>
-          </Text>
-        ))}
-        <Text dimColor>↓ entrée+cache écrit · ⚡ cache lu · ↑ sortie · ↳ sous-agent</Text>
+          {tabs}
+        </Box>
+        {body}
+        <Text dimColor>1-4 onglets · Échap ou /tokens pour fermer</Text>
       </Box>
     )
   })

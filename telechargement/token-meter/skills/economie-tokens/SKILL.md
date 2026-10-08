@@ -1,6 +1,6 @@
 ---
 name: economie-tokens
-description: Économiser les tokens et garder un contexte sain dans Claude Code et claude.ai. Déclencher quand l'utilisateur dit « économise des tokens », « ça consomme trop », « je suis à X % de contexte », « mes limites fondent », « pourquoi ce tour a coûté autant », « lis le panneau Tokens », « optimise le contexte », « reduce token costs », « optimize context », ou quand le panneau / la ligne de statut token-meter montre un contexte ≥ 70 %, un faible taux de cache ou un pic. Couvre le diagnostic (lire /tokens et /context), les leviers concrets (compact, clear, sous-agents, lectures ciblées, modèle, skills/MCP), le cache de prompt, et les gestes propres au travail d'écriture sur manuscrit. Pour concevoir un système d'agents (code), voir references/systemes-agents.md.
+description: Économiser les tokens et garder un contexte sain dans Claude Code et claude.ai. Déclencher quand l'utilisateur dit « économise des tokens », « ça consomme trop », « je suis à X % de contexte », « mes limites fondent », « pourquoi ce tour a coûté autant », « lis le widget Tokens », « optimise le contexte », « reduce token costs », « optimize context », ou quand le panneau / la widget token-meter montre un contexte ≥ 70 %, un faible taux de cache ou un pic. Couvre le diagnostic (lire /tokens et /context), les leviers concrets (compact, clear, sous-agents, lectures ciblées, modèle, skills/MCP), le cache de prompt, et les gestes propres au travail d'écriture sur manuscrit. Pour concevoir un système d'agents (code), voir references/systemes-agents.md.
 ---
 
 # Économie de tokens
@@ -11,8 +11,8 @@ But : dépenser les tokens là où ils servent le travail, pas dans le bruit. On
 
 Avant de conseiller quoi que ce soit, lire l'état réel :
 
-- **Ligne de statut token-meter** : `ctx ███░ 62% · dernier tour 12k (↑1.5k) · $1.23 · 5h 23%`.
-- **`/tokens`** (panneau) : catégories du contexte, taux de cache, courbe par tour, sous-agents.
+- **Icône token-meter** au-dessus de la saisie (`◑ 62%`) : un clic ou `/tokens` ouvre le widget.
+- **Widget** : onglets Aperçu (contexte, coût, dernier tour, cache, limites, prévisions), Contexte (répartition par catégorie), Tours (courbe et détail), Garde-fou.
 - **`/context`** : la même répartition, détaillée par fichier mémoire, outil MCP, skill.
 - **`/cost`** : coût de la session.
 
@@ -23,7 +23,7 @@ Si l'utilisateur colle ou décrit ces chiffres, partir de là. Sinon, lui demand
 | Ce que montre le panneau | Cause probable | Geste |
 |---|---|---|
 | Contexte ≥ 70 % | Historique long, gros résultats d'outils accumulés | `/compact` **avec consigne** (« garde les décisions et l'état du Ch.12, jette les lectures ») |
-| Bandeau ⚠ au-dessus de la saisie | Contexte ≥ 70 %, avec prévision « 85 % dans ~N tours » | Bouton **Compacter** (consigne déjà rédigée : garder décisions, chapitres en cours, consignes de style) |
+| Icône `◕`/`●` en couleur | Contexte ≥ 70 % | Ouvrir le widget (prévision « 85 % dans ~N tours »), puis `/compact` avec consigne |
 | Contexte ≥ 85 % | Compaction automatique imminente, perte de contrôle sur ce qui est gardé | `/compact` maintenant, ou `/clear` si la tâche est finie |
 | Catégorie **Messages** dominante | Conversation qui s'étire, tâches enchaînées | `/clear` entre tâches sans lien ; résumer l'acquis dans un fichier avant |
 | Catégorie **Outils MCP / System tools** lourde | Serveurs MCP ou connecteurs inutiles chargés | Désactiver les connecteurs non utilisés pour ce projet |

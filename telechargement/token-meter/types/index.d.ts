@@ -48,6 +48,10 @@ export type Samples = {
   limits: Record<string, Sample[]>
 }
 
+export type Tab = 'apercu' | 'contexte' | 'tours' | 'garde'
+
+export type Widget = { isOpen: boolean; tab: Tab }
+
 declare module 'claude-code' {
   interface PluginState {
     'token-meter': {
@@ -57,8 +61,8 @@ declare module 'claude-code' {
       gauge: Gauge
       guard: GuardStats
       samples: Samples
-      /** Context level (70 or 85) whose band the person hid; 0 when none. */
-      bandHidden: number
+      /** The widget: open or not, and the tab shown. */
+      widget: Widget
     }
   }
 }
