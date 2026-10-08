@@ -1,0 +1,6 @@
+{
+  "name": "token-meter",
+  "version": "0.1.0",
+  "description": "Visualise la consommation de tokens (jauge de contexte, coût, limites, historique par tour), alerte sur les seuils et les pics, et embarque la skill economie-tokens.",
+  "types": "./types/index.d.ts"
+}
