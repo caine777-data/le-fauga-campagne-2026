@@ -1,6 +1,6 @@
 {
   "name": "token-meter",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Widget de consommation de tokens ouvert à la demande (icône cliquable), prévisions, garde-fou de lecture et skill economie-tokens.",
   "types": "./types/index.d.ts"
 }

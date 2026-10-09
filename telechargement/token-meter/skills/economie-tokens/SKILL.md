@@ -11,7 +11,7 @@ But : dépenser les tokens là où ils servent le travail, pas dans le bruit. On
 
 Avant de conseiller quoi que ce soit, lire l'état réel :
 
-- **Icône token-meter** au-dessus de la saisie (`◑ 62%`) : un clic ou `/tokens` ouvre le widget.
+- **Icône token-meter** au bout de la ligne grise sous la saisie (`◑`) : un clic ou `/tokens` ouvre le widget.
 - **Widget** : onglets Aperçu (contexte, coût, dernier tour, cache, limites, prévisions), Contexte (répartition par catégorie), Tours (courbe et détail), Garde-fou.
 - **`/context`** : la même répartition, détaillée par fichier mémoire, outil MCP, skill.
 - **`/cost`** : coût de la session.

@@ -65,14 +65,15 @@ for (const surface of ['terminal', 'desktop'] as const) {
 
     await $.session.measure({ context: { window: 200_000, tokens: 100_000, percent: 50 }, rateLimits: [], changed: ['context'] })
     const ui = await $.ui.mount({
-      plugin: 'token-meter', surface, component: 'AbovePrompt',
-      props: { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 100 } as never,
+      plugin: 'token-meter', surface, component: 'PromptHint',
+      props: { isDraft: false, isWorking: false, hint: '? for shortcuts' },
       viewport: { columns: 100, rows: 40 },
     })
-    expect(await ui.find({ key: 'launcher', text: '◑ 50%' })).toBeDefined()
+    expect(await ui.find({ key: 'launcher', text: '◑' })).toBeDefined()
+    expect(await ui.find({ text: '? for shortcuts' })).toBeDefined()
     await ui.press({ key: 'launcher' })
     expect(opened).toBe(1)
-    expect(await ui.find({ key: 'launcher', text: /✕/ })).toBeDefined()
+    expect(await ui.find({ key: 'launcher', text: '✕' })).toBeDefined()
   })
 }
 

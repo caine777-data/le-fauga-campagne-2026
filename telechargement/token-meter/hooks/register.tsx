@@ -247,20 +247,23 @@ export const register: Register = on => {
 
   // ── Icône ───────────────────────────────────────────────────────────────
 
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.hasSurvey) return next(e)
-    const { Box, Button } = $.ui.resolve(e)
+  on('ui.render', { component: 'PromptHint' }, async ($, e) => {
+    const { Box, Button, Text } = $.ui.resolve(e)
     const g = await read($, gauge)
     const isOpen = (await read($, widget)).isOpen
-    const label = `${fillGlyph(g.percent)} ${g.percent === undefined ? 'tokens' : `${g.percent}%`}`
+    const p = g.percent
 
+    // The engine's hint stays, the icon sits alone at the end of the line.
     return (
-      <Box justifyContent="flex-end">
+      <Box justifyContent="space-between">
+        <Text dimColor wrap="truncate-end">
+          {e.props.hint}
+        </Text>
         <Button
           key="launcher"
-          label={isOpen ? `${label} ✕` : label}
+          label={isOpen ? '✕' : p !== undefined && p >= 70 ? `${fillGlyph(p)} ${p}%` : fillGlyph(p)}
           plain
-          dimColor={!isOpen && (g.percent ?? 0) < 70}
+          dimColor={!isOpen && (p ?? 0) < 70}
           onPress={() => toggleWidget($)}
         />
       </Box>
