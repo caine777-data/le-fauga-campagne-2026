@@ -4,6 +4,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Samples, Tab, Totals, TurnRecord } from '../types'
 import { forgetLoop, judgeRead, readKey, wantsFullRead } from './guard'
 import type { GuardMemory } from './guard'
+import { agentDefs, judgeMedia, quietCommand } from './media'
 import {
   LIMIT_LABEL,
   advice,
@@ -84,6 +85,16 @@ export const register: Register = on => {
     const file = await $.fs.stat(e.file_path).catch(() => undefined)
     const call = { file_path: e.file_path, offset: e.offset, limit: e.limit, pages: e.pages, agentId: e.agentId }
     const key = readKey(call)
+
+    // Médias : vidéo/son illisibles, grosse image → aperçu réduit d'abord (retenu une fois).
+    if (!mem.held.has(key)) {
+      const media = judgeMedia(e.file_path, file?.kind === 'file' ? file.size : undefined, `${$.plugin.root}/scripts/media.py`)
+      if (media.kind === 'deny') {
+        mem.held.add(key)
+        return { deny: media.reason }
+      }
+    }
+
     const verdict = judgeRead(mem, call, file?.kind === 'file' ? file : undefined, isFullReadTurn)
 
     if (verdict.kind === 'deny') {
@@ -108,6 +119,15 @@ export const register: Register = on => {
     return ran
   }).catch(($, e, next) => next(e))
 
+  // ── Commandes bavardes rendues silencieuses (ffmpeg, PyInstaller) ─────────
+
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    const g = await read($, guard)
+    const command = g.isOn ? quietCommand(e.command) : e.command
+
+    return next(command === e.command ? e : { ...e, command })
+  }).catch(($, e, next) => next(e))
+
   on('session.compact', async ($, e, next) => {
     const result = await next(e)
     if (e.trigger !== 'precompute' && 'messages' in result && result.messages) forgetLoop(mem, e.agentId)
@@ -130,6 +150,10 @@ export const register: Register = on => {
       description: 'Active ou coupe le garde-fou de lecture (grosses lectures, relectures)',
     })
     await $.command.register({ name: 'tokens-reset', description: "Remet à zéro l'historique du widget" })
+    // Sous-agents appelés d'office : le travail lourd reste hors de la conversation principale.
+    for (const def of agentDefs($.plugin.root)) {
+      await $.agent.register({ ...def, omitClaudeMd: true }).catch(() => undefined)
+    }
     $.ui.status(undefined)
 
     return next(e)

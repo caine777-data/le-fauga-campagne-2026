@@ -1,6 +1,6 @@
 ---
 name: economie-tokens
-description: Économiser les tokens et garder un contexte sain dans Claude Code et claude.ai. Déclencher quand l'utilisateur dit « économise des tokens », « ça consomme trop », « je suis à X % de contexte », « mes limites fondent », « pourquoi ce tour a coûté autant », « lis le widget Tokens », « optimise le contexte », « reduce token costs », « optimize context », ou quand le panneau / la widget token-meter montre un contexte ≥ 70 %, un faible taux de cache ou un pic. Couvre le diagnostic (lire /tokens et /context), les leviers concrets (compact, clear, sous-agents, lectures ciblées, modèle, skills/MCP), le cache de prompt, et les gestes propres au travail d'écriture sur manuscrit. Pour concevoir un système d'agents (code), voir references/systemes-agents.md.
+description: Économiser les tokens et garder un contexte sain dans Claude Code et claude.ai. Déclencher quand l'utilisateur dit « économise des tokens », « ça consomme trop », « je suis à X % de contexte », « mes limites fondent », « pourquoi ce tour a coûté autant », « lis le widget Tokens », « optimise le contexte », « reduce token costs », « optimize context », ou avant un travail lourd sur images, vidéos, montage ou fabrication de setup.exe, ou quand le panneau / la widget token-meter montre un contexte ≥ 70 %, un faible taux de cache ou un pic. Couvre le diagnostic (lire /tokens et /context), les leviers concrets (compact, clear, sous-agents, lectures ciblées, modèle, skills/MCP), le cache de prompt, et les gestes propres au travail d'écriture sur manuscrit. Pour concevoir un système d'agents (code), voir references/systemes-agents.md.
 ---
 
 # Économie de tokens
@@ -68,7 +68,24 @@ Pour un manuscrit très long, préférer un **sous-agent** qui lit tout et rend 
 
 Après un refus pour relecture : si le contenu a disparu du contexte (compaction, `/clear`), relancer ; le mod oublie de lui-même ce qui a été lu après une compaction ou un `/clear`.
 
-## 6. Répondre à l'utilisateur
+## 6. Images, vidéos, montage, setup.exe : la machine travaille, pas le contexte
+
+Ce qui coûte : une image lue ≈ (largeur × hauteur) / 750 tokens (jusqu'à ~1 600) ; une vidéo « regardée » image par image, des dizaines de milliers ; un journal ffmpeg ou PyInstaller, des centaines de lignes à chaque essai. Ce qui ne coûte rien : un programme local qui tourne et rend une ligne.
+
+| Besoin | Geste | Gain |
+|---|---|---|
+| Monter, couper, assembler, compresser, convertir, GIF, lot d'images | Sous-agent **`token-meter:media`** (Haiku) : il lance ffmpeg via `scripts/media.py` et rend 3 lignes | Tout le travail hors conversation, modèle léger |
+| Regarder une vidéo | `media.py planche VIDEO` : **une** image de 12 vignettes horodatées | ~12× moins que 12 images |
+| Regarder une grosse image | `media.py apercu IMAGE` (≤ 768 px) | ~2× moins, et le garde-fou le propose de lui-même |
+| Connaître un média | `media.py info` : une ligne (durée, résolution, codecs) | au lieu de ~60 lignes de ffmpeg -i |
+| Fabriquer un .exe / setup.exe | Sous-agent **`token-meter:setup-exe`** : `scripts/build_setup.py` (PyInstaller → Inno Setup ou NSIS), journal dans `build/setup-log.txt` | Les milliers de lignes de build ne remontent jamais |
+| Lire un gros volume (manuscrit, logs, PDF) | Sous-agent **`token-meter:lecteur`** (Haiku) : il lit tout et rend une synthèse avec fichier:ligne | Le texte intégral reste dans son contexte |
+
+Le mod fait aussi, sans rien demander : `-hide_banner -nostats` ajouté à `ffmpeg`/`ffprobe`, `--log-level WARN` à PyInstaller ; un `Read` de vidéo/son ou d'image > 500 Ko est retenu une fois avec la commande d'aperçu à lancer (relancer le même `Read` passe). `/tokens-garde` coupe tout cela.
+
+Génération d'images ou de vidéos par IA (Canva, ElevenLabs…) : décrire précisément en une fois, ne pas relancer pour « voir » (chaque génération coûte des crédits), récupérer le fichier puis le traiter localement avec `media.py`.
+
+## 7. Répondre à l'utilisateur
 
 1. Donner les 2 ou 3 chiffres qui comptent (contexte %, catégorie dominante, taux de cache ou pic).
 2. Nommer la cause en une phrase.
