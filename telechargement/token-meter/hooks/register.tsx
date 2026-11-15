@@ -4,6 +4,8 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Samples, Tab, Totals, TurnRecord } from '../types'
 import { forgetLoop, judgeRead, readKey, wantsFullRead } from './guard'
 import type { GuardMemory } from './guard'
+import { countLines, coverage, coverageLine, logRead, readInterval } from './couverture'
+import type { ReadLog } from './couverture'
 import { ETAT_FILE, agentDefs, judgeMedia, passationPrompt, quietCommand } from './media'
 import {
   LIMIT_LABEL,
@@ -67,6 +69,8 @@ async function toggleWidget($: EngineInterface): Promise<boolean> {
 
 export const register: Register = on => {
   const mem: GuardMemory = { seen: new Map(), held: new Set() }
+  const readLog: ReadLog = new Map()
+  const norm = (p: string): string => p.replace(/\\/g, '/').toLowerCase()
   const heldBig = new Map<string, number>()
   let isFullReadTurn = false
   let hasWarned = false
@@ -81,7 +85,12 @@ export const register: Register = on => {
 
   on('tool.call', { tool: 'Read' }, async ($, e, next) => {
     const g = await read($, guard)
-    if (!g.isOn) return next(e)
+    if (!g.isOn) {
+      const ran = await next(e)
+      if (ran.deny === undefined && ran.isError !== true && e.pages === undefined)
+        logRead(readLog, e.agentId ?? 'main', norm(e.file_path), readInterval(e.offset, e.limit))
+      return ran
+    }
     const file = await $.fs.stat(e.file_path).catch(() => undefined)
     const call = { file_path: e.file_path, offset: e.offset, limit: e.limit, pages: e.pages, agentId: e.agentId }
     const key = readKey(call)
@@ -114,7 +123,10 @@ export const register: Register = on => {
     }
 
     const ran = await next(e)
-    if (ran.deny === undefined && ran.isError !== true && file?.kind === 'file') mem.seen.set(key, file.mtimeMs)
+    if (ran.deny === undefined && ran.isError !== true && file?.kind === 'file') {
+      mem.seen.set(key, file.mtimeMs)
+      if (e.pages === undefined) logRead(readLog, e.agentId ?? 'main', norm(e.file_path), readInterval(e.offset, e.limit))
+    }
 
     return ran
   }).catch(($, e, next) => next(e))
@@ -157,6 +169,16 @@ export const register: Register = on => {
     })
     const etat = await $.fs.stat(`${await $.session.root()}/${ETAT_FILE}`).catch(() => undefined)
     if (etat?.kind === 'file') $.ui.toast(`${ETAT_FILE} trouvé : dis « reprends depuis ${ETAT_FILE} » pour repartir sans l'historique.`)
+    await $.tool.register({
+      name: 'couverture',
+      description:
+        "Dit, pour chaque fichier, combien de lignes l'agent qui appelle a réellement reçues par Read, et lesquelles il n'a pas lues. À appeler avant de conclure une relecture intégrale.",
+      inputSchema: {
+        type: 'object',
+        properties: { fichiers: { type: 'array', items: { type: 'string' }, description: 'Chemins des fichiers (vide : tous ceux lus)' } },
+      },
+      isDeferred: false,
+    }).catch(() => undefined)
     // Sous-agents appelés d'office : le travail lourd reste hors de la conversation principale.
     for (const def of agentDefs($.plugin.root)) {
       await $.agent.register({ ...def, omitClaudeMd: true }).catch(() => undefined)
@@ -187,6 +209,26 @@ export const register: Register = on => {
         : 'Garde-fou de lecture coupé : Claude peut tout lire librement. /tokens-garde pour le réactiver.',
     }
   })
+
+  // ── Couverture de lecture (relecteur de roman) ──────────────────────────
+
+  on('tool.call', { tool: 'mcp__token-meter__couverture' }, async ($, e) => {
+    const asked = Array.isArray(e.fichiers) ? (e.fichiers as unknown[]).filter((f): f is string => typeof f === 'string') : []
+    const seen = readLog.get(e.agentId ?? 'main') ?? new Map()
+    const files = asked.length > 0 ? asked : [...seen.keys()]
+    if (files.length === 0) return { result: 'Aucun fichier lu par cet agent pour l\'instant.' }
+    const lines: string[] = []
+    for (const f of files) {
+      const abs = /^([a-zA-Z]:)?[\\/]/.test(f) ? f : `${await $.session.cwd()}/${f}`
+      const text = await $.fs.read(abs).catch(() => undefined)
+      if (typeof text !== 'string') {
+        lines.push(`? ${f} : illisible ou introuvable`)
+        continue
+      }
+      lines.push(coverageLine(f, coverage(seen.get(norm(abs)) ?? [], countLines(text))))
+    }
+    return { result: lines.join('\n') }
+  }).catch(() => ({ result: 'Couverture indisponible (erreur du mod) : vérifie à la main avec wc -l et tes tranches.' }))
 
   on('command.run', { command: 'passation' }, async ($, e) => {
     void $.prompt.submit({ text: passationPrompt(e.args.trim()) })

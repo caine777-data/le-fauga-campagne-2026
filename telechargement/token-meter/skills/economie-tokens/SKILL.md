@@ -50,7 +50,9 @@ Si l'utilisateur colle ou décrit ces chiffres, partir de là. Sinon, lui demand
 
 - **Un chapitre à la fois.** Ne pas coller le manuscrit entier ; pointer le fichier du chapitre et lire la scène concernée.
 - **Bible et plan en fichiers**, pas en mémoire permanente : les lire quand la question l'exige.
-- **Passes globales** (tics, répétitions, cohérence de noms sur tout le roman) : `grep` ou sous-agent, qui rend une liste, plutôt que charger tous les chapitres dans la conversation.
+- **Passes globales sur un roman** (cohérence, chronologie, personnages, continuité, relecture d'ensemble) : sous-agent **`token-meter:relecteur-roman`**, jamais `lecteur`. Il tourne sur le **même modèle** que la conversation, lit **tout** par tranches de 400 lignes, note chaque détail dans `.relecture/carnet.md` avec fichier:ligne, et ne conclut qu'à **100 % de couverture** mesurée par le mod (outil `couverture`). Son rapport cite mot pour mot. L'économie vient de ce que le texte intégral reste hors de la conversation, pas d'un modèle moins cher : sur un roman on ne rogne pas sur la qualité.
+- **Écrire, réécrire, polir le style** : toujours dans la conversation principale, avec les skills d'auteur. Ne jamais déléguer l'écriture à un sous-agent.
+- **Tics et répétitions mécaniques** : `grep` (ou la skill chasse-tics) suffit.
 - **Corrections en chercher/remplacer** (format déjà utilisé par les skills d'écriture) plutôt que réécriture intégrale : la sortie coûte plus cher que l'entrée.
 - **Après une grosse session de polissage** : noter les décisions dans le plan, puis `/clear` avant le chapitre suivant.
 
@@ -82,7 +84,8 @@ Ce qui coûte : une image lue ≈ (largeur × hauteur) / 750 tokens (jusqu'à ~1
 | Regarder une grosse image | `media.py apercu IMAGE` (≤ 768 px) | ~2× moins |
 | Connaître un média | `media.py info` : une ligne | au lieu de ~60 lignes |
 | Fabriquer un .exe / setup.exe | Sous-agent **`token-meter:setup-exe`** (`scripts/build_setup.py`) | Les milliers de lignes de build ne remontent jamais |
-| Lire un gros volume (manuscrit, logs, PDF) | Sous-agent **`token-meter:lecteur`** | Le texte intégral reste dans son contexte |
+| Relire un roman / manuscrit | Sous-agent **`token-meter:relecteur-roman`** (même modèle, lecture intégrale prouvée, carnet, citations exactes) | Le texte reste hors conversation, sans perte de détail |
+| Lire un gros volume non littéraire (logs, docs, PDF) | Sous-agent **`token-meter:lecteur`** (Haiku) | Le texte intégral reste dans son contexte |
 | Discussion qui dure depuis des jours | **`/passation`** : Claude écrit `ETAT.md`, puis `/clear` et « reprends depuis ETAT.md » | Chaque message cesse de relire tout l'historique |
 
 Le mod fait aussi, sans rien demander : `-hide_banner -nostats` ajouté à `ffmpeg`/`ffprobe`, `--log-level WARN` à PyInstaller ; un `Read` de vidéo/son ou d'image > 500 Ko est retenu une fois avec la commande d'aperçu à lancer (relancer le même `Read` passe). `/tokens-garde` coupe tout cela.

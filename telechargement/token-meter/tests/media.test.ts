@@ -38,7 +38,7 @@ test('PyInstaller runs at WARN unless a level is already set', () => {
 
 test('the subagents point at the scripts shipped with the mod', () => {
   const defs = agentDefs('/p')
-  expect(defs.map(d => d.name)).toEqual(['media', 'image', 'setup-exe', 'lecteur'])
+  expect(defs.map(d => d.name)).toEqual(['media', 'image', 'setup-exe', 'relecteur-roman', 'lecteur'])
   expect(defs[0]?.prompt).toContain('/p/scripts/media.py" monter')
   expect(defs[1]?.prompt).toContain('/p/scripts/generer.py" comfy')
   expect(defs[1]?.description).toContain('demander à l\'utilisateur la voie')

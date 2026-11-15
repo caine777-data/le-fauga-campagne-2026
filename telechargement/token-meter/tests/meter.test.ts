@@ -86,3 +86,21 @@ test('Read guard: holds a big whole-file read once, lets the repeat through', as
   const second = await $.tool.call({ tool: 'Read', file_path: '/r/ms.md' })
   expect(second.isError === true || second.deny !== undefined).toBe(false)
 })
+
+test('coverage tool: a proof-reader that skipped a slice is told which lines', async ($, on) => {
+  const novel = Array.from({ length: 1000 }, (_, i) => `ligne ${i + 1}`).join('\n') + '\n'
+  on('fs.stat', () => ({ value: { kind: 'file', size: novel.length, mtimeMs: 1, isLink: false } }))
+  on('fs.read', () => ({ value: novel }) as never)
+  on('tool.call', { tool: 'Read' }, () => ({ result: { type: 'text', file: { filePath: '/r/ch1.md', content: 'x', numLines: 400, startLine: 1, totalLines: 1000 } } }) as never)
+
+  await $.tool.call({ tool: 'Read', file_path: '/r/ch1.md', offset: 1, limit: 400, agentId: 'rel' })
+  await $.tool.call({ tool: 'Read', file_path: '/r/ch1.md', offset: 801, limit: 400, agentId: 'rel' })
+  await $.tool.call({ tool: 'Read', file_path: '/r/ch1.md', offset: 401, limit: 400 })
+
+  const rel = await $.tool.call({ tool: 'mcp__token-meter__couverture', fichiers: ['/r/ch1.md'], agentId: 'rel' } as never)
+  expect(JSON.stringify(rel)).toContain('600/1000 lignes lues ; NON LUES : 401–800')
+
+  await $.tool.call({ tool: 'Read', file_path: '/r/ch1.md', offset: 401, limit: 400, agentId: 'rel' })
+  const done = await $.tool.call({ tool: 'mcp__token-meter__couverture', fichiers: ['/r/ch1.md'], agentId: 'rel' } as never)
+  expect(JSON.stringify(done)).toContain('1000/1000 lignes lues')
+})

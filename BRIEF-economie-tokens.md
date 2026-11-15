@@ -1,4 +1,4 @@
-# Brief : économie de tokens (token-meter 0.4.0)
+# Brief : économie de tokens (token-meter 0.4.1)
 
 *Mis à jour le 15/11/2026. Branche `claude/token-savings-media-local-5bq1t9`.*
 
@@ -10,7 +10,7 @@
 | Génération d'images (gravures, art de jeu), alors que ComfyUI + Flux tournent déjà sur ton PC | Légendes carolingiennes, Ludus, Capitaine Spade | sous-agent **image**, trois voies au choix |
 | Reels, bandes-annonces, chaîne YouTube, migration de 57 vidéos | Ogier Instagram, Reels, Prismes | sous-agent **media** + `monter` (automatique) |
 | Fabrication de .exe et de versions | RamWatch, PodAdmin, Dédale | sous-agent **setup-exe** |
-| Relectures de manuscrits | Ogier, livre enquête, analyse de style | sous-agent **lecteur** |
+| Relectures de manuscrits | Ogier, livre enquête, analyse de style | sous-agent **relecteur-roman** (lecture intégrale prouvée, aucune perte de détail) |
 | LLM local (Ollama) testé et abandonné | Gemini possibilities | pas repris : décision gardée |
 
 ## Tes choix (15/11)
@@ -18,6 +18,7 @@
 - **Génération d'image** : Claude te demande la voie à chaque fois (local ComfyUI / fiche à coller dans Gemini / API payante).
 - **Montage** : entièrement automatique, en local (plus de CapCut).
 - **`/passation`** : oui. Guide des connecteurs : non.
+- **Romans** : aucune relecture « à la va-vite ». Le relecteur tourne sur le même modèle que la conversation, lit tout, et le mod vérifie qu'il n'a rien sauté.
 
 ## Ce qui existe maintenant
 
@@ -26,13 +27,14 @@
 | `scripts/media.py` | info, apercu, planche, galerie, couper, assembler, compresser, reduire, gif, extraire-audio, **monter** (plan texte → film 9:16 ou 16:9, avec cartons, textes, zoom, fondus et musique qui baisse sous les voix) |
 | `scripts/generer.py` | `comfy` (ComfyUI local), `fiche` + `entrants` (Gemini à la main), `api` (Gemini, payant) |
 | `scripts/build_setup.py` | PyInstaller → Inno Setup ou NSIS → setup.exe, journal à part |
-| Sous-agents | `media` (Haiku), `image` (Haiku), `setup-exe` (Sonnet), `lecteur` (Haiku) |
+| Sous-agents | `media` (Haiku), `image` (Haiku), `setup-exe` (Sonnet), `relecteur-roman` (même modèle que la conversation), `lecteur` (Haiku, non littéraire) |
+| Couverture de lecture | le mod note chaque ligne reçue par chaque agent ; l'outil `couverture` dit « 1000/1000 » ou « NON LUES : 401–800 » |
 | Automatismes | ffmpeg et PyInstaller rendus silencieux ; lecture d'une vidéo ou d'une image > 500 Ko retenue une fois avec la bonne commande |
 | `/passation` | écrit `ETAT.md` ; au démarrage suivant, un message signale qu'il existe |
 
 ## Testé / pas testé
 
-- Testé ici : toutes les commandes `media.py` (dont un montage 9:16 vérifié à l'œil), `build_setup.py` jusqu'à un vrai setup.exe NSIS, `generer.py comfy` contre un faux serveur ComfyUI, `fiche` et `entrants`, plus les 22 tests du mod.
+- Testé ici : toutes les commandes `media.py` (dont un montage 9:16 vérifié à l'œil), `build_setup.py` jusqu'à un vrai setup.exe NSIS, `generer.py comfy` contre un faux serveur ComfyUI, `fiche` et `entrants`, plus les 29 tests du mod (dont un relecteur qui saute 400 lignes et se fait arrêter).
 - **À tester chez toi** : ComfyUI réel (`generer.py comfy --verifier`), Inno Setup, l'API Gemini (le nom du modèle peut changer : option `--modele`), et les sous-agents et `/passation` dans une vraie session.
 
 ## Pour installer

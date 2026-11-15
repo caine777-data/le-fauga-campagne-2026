@@ -35,7 +35,8 @@ Le mod déclare trois types de sous-agents que Claude appelle de lui-même quand
 | `token-meter:media` | Haiku | **montage automatique** (plan texte → film), découpe, assemblage, compression, GIF, lot d'images, « regarder » une vidéo |
 | `token-meter:image` | Haiku | **générer** des images par la voie que tu choisis : ComfyUI local, fiche Gemini, ou API |
 | `token-meter:setup-exe` | Sonnet | `.exe` et `setup.exe` (PyInstaller → Inno Setup ou NSIS), réparation d'un build |
-| `token-meter:lecteur` | Haiku | lire un manuscrit, de gros journaux ou un dossier entier et n'en rendre que l'essentiel |
+| `token-meter:relecteur-roman` | **le même que la conversation** | relire un roman : lecture **intégrale** prouvée (le mod mesure les lignes lues, outil `couverture`), carnet de détails sur disque, rapport avec citations exactes ; ne réécrit jamais |
+| `token-meter:lecteur` | Haiku | gros journaux, documentation, PDF, dossiers : n'en rendre que l'essentiel (**pas** pour un roman) |
 
 Les scripts marchent aussi seuls, sans Claude :
 
