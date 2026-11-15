@@ -74,16 +74,19 @@ Ce qui coûte : une image lue ≈ (largeur × hauteur) / 750 tokens (jusqu'à ~1
 
 | Besoin | Geste | Gain |
 |---|---|---|
-| Monter, couper, assembler, compresser, convertir, GIF, lot d'images | Sous-agent **`token-meter:media`** (Haiku) : il lance ffmpeg via `scripts/media.py` et rend 3 lignes | Tout le travail hors conversation, modèle léger |
+| **Générer** une image (gravure, art de jeu, couverture) | Demander la voie à l'utilisateur : **local ComfyUI** (0 €), **fiche Gemini** (il colle le prompt lui-même), **API** (payant). Écrire le prompt, puis sous-agent **`token-meter:image`** (`scripts/generer.py`) | La génération et l'attente hors conversation ; une galerie au lieu de N images |
+| **Monter** (Reel, bande-annonce, diaporama de gravures) | Sous-agent **`token-meter:media`** : il écrit un plan texte et lance `media.py monter` (cartons, textes, zoom, fondus, musique qui baisse sous les voix). Toujours automatique, jamais de logiciel de montage à proposer | Tout le montage hors conversation, modèle léger |
+| Couper, assembler, compresser, GIF, lot d'images | Sous-agent **`token-meter:media`** | idem |
 | Regarder une vidéo | `media.py planche VIDEO` : **une** image de 12 vignettes horodatées | ~12× moins que 12 images |
-| Regarder une grosse image | `media.py apercu IMAGE` (≤ 768 px) | ~2× moins, et le garde-fou le propose de lui-même |
-| Connaître un média | `media.py info` : une ligne (durée, résolution, codecs) | au lieu de ~60 lignes de ffmpeg -i |
-| Fabriquer un .exe / setup.exe | Sous-agent **`token-meter:setup-exe`** : `scripts/build_setup.py` (PyInstaller → Inno Setup ou NSIS), journal dans `build/setup-log.txt` | Les milliers de lignes de build ne remontent jamais |
-| Lire un gros volume (manuscrit, logs, PDF) | Sous-agent **`token-meter:lecteur`** (Haiku) : il lit tout et rend une synthèse avec fichier:ligne | Le texte intégral reste dans son contexte |
+| Comparer des variantes | `media.py galerie DOSSIER` : images numérotées en une planche | N× moins |
+| Regarder une grosse image | `media.py apercu IMAGE` (≤ 768 px) | ~2× moins |
+| Connaître un média | `media.py info` : une ligne | au lieu de ~60 lignes |
+| Fabriquer un .exe / setup.exe | Sous-agent **`token-meter:setup-exe`** (`scripts/build_setup.py`) | Les milliers de lignes de build ne remontent jamais |
+| Lire un gros volume (manuscrit, logs, PDF) | Sous-agent **`token-meter:lecteur`** | Le texte intégral reste dans son contexte |
+| Discussion qui dure depuis des jours | **`/passation`** : Claude écrit `ETAT.md`, puis `/clear` et « reprends depuis ETAT.md » | Chaque message cesse de relire tout l'historique |
 
 Le mod fait aussi, sans rien demander : `-hide_banner -nostats` ajouté à `ffmpeg`/`ffprobe`, `--log-level WARN` à PyInstaller ; un `Read` de vidéo/son ou d'image > 500 Ko est retenu une fois avec la commande d'aperçu à lancer (relancer le même `Read` passe). `/tokens-garde` coupe tout cela.
 
-Génération d'images ou de vidéos par IA (Canva, ElevenLabs…) : décrire précisément en une fois, ne pas relancer pour « voir » (chaque génération coûte des crédits), récupérer le fichier puis le traiter localement avec `media.py`.
 
 ## 7. Répondre à l'utilisateur
 

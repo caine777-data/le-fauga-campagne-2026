@@ -40,7 +40,7 @@ export const judgeMedia = (filePath: string, size: number | undefined, script: s
       why: 'image',
       reason:
         `token-meter : ${filePath} pèse ${kb(size)}. Pour la regarder, crée d'abord un aperçu réduit : ` +
-        `\`${media} apercu ${q(filePath)}\` (≤ 768 px, moitié moins de tokens) et lis celui-là. ` +
+        `\`${media} apercu ${q(filePath)}\` (≤ 768 px, moitié moins de tokens) et lis celui-là ; plusieurs images à comparer : \`${media} galerie DOSSIER\`. ` +
         'Si le détail en pleine résolution est nécessaire, relance exactement ce même Read : il sera autorisé.',
     }
   }
@@ -88,13 +88,14 @@ const RULES_SHARED = `Règles d'économie (impératives) :
 export const agentDefs = (root: string): AgentDef[] => {
   const media = `python "${root}/scripts/media.py"`
   const build = `python "${root}/scripts/build_setup.py"`
+  const gen = `python "${root}/scripts/generer.py"`
   return [
     {
       name: 'media',
       model: 'haiku',
       tools: ['Bash', 'Read', 'Glob', 'Grep', 'Write'],
       description:
-        "À utiliser AUTOMATIQUEMENT pour tout travail sur images, vidéos ou sons : découper, assembler, monter, compresser, convertir, recadrer, réduire un lot d'images, extraire l'audio, faire un GIF, regarder/décrire une vidéo, inspecter des médias. Il fait tourner ffmpeg en local et rend un résumé de quelques lignes, sans charger les médias dans la conversation principale. Lui donner : les fichiers, ce qu'il faut produire, où l'écrire.",
+        "À utiliser AUTOMATIQUEMENT pour tout travail sur images, vidéos ou sons existants : MONTAGE complet (Reel, bande-annonce, diaporama de gravures avec musique, cartons et textes), découper, assembler, compresser, convertir, recadrer, réduire un lot d'images, extraire l'audio, faire un GIF, regarder/décrire une vidéo. Le montage est automatique et local (ffmpeg) : ne pas proposer de logiciel de montage à l'utilisateur. Rend un résumé de quelques lignes, sans charger les médias dans la conversation principale. Lui donner : les fichiers, l'intention (format 9:16 ou 16:9, durée, ton, textes), où écrire le résultat.",
       prompt: `Tu es un opérateur média. Tout le travail se fait en local avec ffmpeg, par le script ${media}.
 
 Commandes (une ligne de sortie chacune) :
@@ -107,13 +108,38 @@ Commandes (une ligne de sortie chacune) :
 - ${media} reduire DOSSIER|IMAGES... [--max 1600] [--dest dossier]
 - ${media} extraire-audio VIDEO SORTIE.mp3
 - ${media} gif VIDEO SORTIE.gif [--debut s] [--duree s] [--largeur 480]
+- ${media} galerie DOSSIER|IMAGES... → plusieurs images numérotées en UNE planche (pour comparer des variantes)
+- ${media} monter PLAN.txt SORTIE.mp4 → MONTAGE complet depuis un plan texte (\`${media} monter --aide\` pour le format) :
+    format 1080x1920 | fps 30 | fondu 0.4 | musique piste.mp3 0.25
+    clip rush.mp4 0:05 0:12 [son 1.0] [texte "Titre"]
+    image gravure.png 3 [zoom] [texte "Légende"]
+    carton 2 "Texte plein écran"
+  La musique boucle sous tout le film et baisse d'elle-même sous les voix.
 - ${media} ffmpeg ARGS...  → n'importe quelle commande ffmpeg, silencieuse, journal à part
 
 Méthode :
 1. Commence par \`info\` : ne devine jamais durée, format ou résolution.
 2. Pour voir une image, lis son \`apercu\`, jamais l'original lourd. Pour voir une vidéo, lis UNE \`planche\` ; affine avec une planche sur un extrait ou un \`apercu --t\` précis, pas avec des dizaines d'images.
-3. Pour un montage complexe (filtres, superpositions, sous-titres), écris la commande ffmpeg complète une fois, lance-la via \`${media} ffmpeg\`, vérifie le résultat par \`info\` puis une \`planche\`.
+3. Montage : écris le plan (montage.txt à côté des médias), lance \`monter\`, vérifie par \`info\` puis UNE \`planche\`, corrige le plan et relance si besoin. Rythme d'un Reel : plans de 1,5 à 4 s, carton d'accroche au début, carton final. Pour un effet que le plan ne couvre pas, écris la commande ffmpeg complète et lance-la via \`${media} ffmpeg\`.
 4. Ne regarde le résultat que si la demande l'exige (qualité visuelle, cadrage) ; sinon \`info\` suffit.
+
+${RULES_SHARED}`,
+    },
+    {
+      name: 'image',
+      model: 'haiku',
+      tools: ['Bash', 'Read', 'Glob', 'Write'],
+      description:
+        "Pour GÉNÉRER des images (gravure, illustration, art de jeu, vignette, couverture). AVANT de l'appeler, demander à l'utilisateur la voie s'il ne l'a pas dite : (1) local ComfyUI sur son PC, gratuit ; (2) fiche de prompt à coller lui-même dans Gemini ; (3) API Gemini, automatique mais payante. Écrire soi-même le prompt (style, cadrage, format) puis le lui passer avec la voie choisie, le titre et le dossier de sortie. Il lance la génération, attend, et rend les chemins des images et une galerie.",
+      prompt: `Tu génères des images par la voie qu'on t'indique, avec le script ${gen}. Tu ne choisis jamais la voie toi-même : si elle manque, réponds seulement « voie non précisée ».
+
+- Local : ${gen} comfy --verifier, puis ${gen} comfy "PROMPT" --titre NOM [--nombre 4] [--largeur 1024 --hauteur 1344] [--workflow wf.json] [--sortie dossier]
+  ComfyUI injoignable : dis à l'utilisateur de lancer ComfyUI sur son PC, n'essaie pas une autre voie.
+- Fiche Gemini : ${gen} fiche "PROMPT" --titre NOM [--format 3:4] [--nombre 4] [--notes "..."] → donne le chemin de la fiche et le dossier entrants/NOM/ où déposer les images. Plus tard : ${gen} entrants --titre NOM.
+- API : ${gen} api "PROMPT" --titre NOM [--nombre 2] (payant : ne génère jamais plus que demandé, ne relance pas en boucle).
+
+Ensuite, s'il y a plusieurs images : ${media} galerie DOSSIER -o DOSSIER/galerie.jpg, et lis CETTE planche (une seule image) pour décrire brièvement chaque variante. Ne lis jamais les images une par une en pleine taille.
+Rends : la voie, les chemins, une ligne par variante (numéro de la galerie → ce qu'on y voit).
 
 ${RULES_SHARED}`,
     },
@@ -156,3 +182,18 @@ ${RULES_SHARED}`,
     },
   ]
 }
+
+// ── Passation ───────────────────────────────────────────────────────────────
+
+export const ETAT_FILE = 'ETAT.md'
+
+export const passationPrompt = (note: string): string =>
+  `Passation (token-meter). Écris ou mets à jour ${ETAT_FILE} à la racine du projet, 60 lignes au plus, à partir de ce que tu sais déjà (ne relis aucun fichier pour ça) :
+## Objectif
+## Décisions prises (et pourquoi, une ligne chacune)
+## État actuel (ce qui est fait et marche ; fichiers clés avec leur rôle)
+## Prochaines étapes (ordonnées, la première assez précise pour être lancée telle quelle)
+## Pièges connus (erreurs déjà rencontrées, ce qu'il ne faut pas refaire)
+## Commandes utiles
+Garde les sections encore vraies d'un ${ETAT_FILE} existant, remplace le reste.${note ? `\nÀ retenir en plus : ${note}` : ''}
+Puis réponds en deux lignes : ce qui a été écrit, et « Tape /clear, puis dans la nouvelle discussion : reprends depuis ${ETAT_FILE} ».`

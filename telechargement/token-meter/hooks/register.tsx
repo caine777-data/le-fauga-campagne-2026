@@ -4,7 +4,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Samples, Tab, Totals, TurnRecord } from '../types'
 import { forgetLoop, judgeRead, readKey, wantsFullRead } from './guard'
 import type { GuardMemory } from './guard'
-import { agentDefs, judgeMedia, quietCommand } from './media'
+import { ETAT_FILE, agentDefs, judgeMedia, passationPrompt, quietCommand } from './media'
 import {
   LIMIT_LABEL,
   advice,
@@ -150,6 +150,13 @@ export const register: Register = on => {
       description: 'Active ou coupe le garde-fou de lecture (grosses lectures, relectures)',
     })
     await $.command.register({ name: 'tokens-reset', description: "Remet à zéro l'historique du widget" })
+    await $.command.register({
+      name: 'passation',
+      description: `Écrit l'état du projet dans ${ETAT_FILE} pour repartir d'une discussion vide (/clear)`,
+      argumentHint: '[note à retenir]',
+    })
+    const etat = await $.fs.stat(`${await $.session.root()}/${ETAT_FILE}`).catch(() => undefined)
+    if (etat?.kind === 'file') $.ui.toast(`${ETAT_FILE} trouvé : dis « reprends depuis ${ETAT_FILE} » pour repartir sans l'historique.`)
     // Sous-agents appelés d'office : le travail lourd reste hors de la conversation principale.
     for (const def of agentDefs($.plugin.root)) {
       await $.agent.register({ ...def, omitClaudeMd: true }).catch(() => undefined)
@@ -179,6 +186,12 @@ export const register: Register = on => {
         ? 'Garde-fou de lecture activé.'
         : 'Garde-fou de lecture coupé : Claude peut tout lire librement. /tokens-garde pour le réactiver.',
     }
+  })
+
+  on('command.run', { command: 'passation' }, async ($, e) => {
+    void $.prompt.submit({ text: passationPrompt(e.args.trim()) })
+
+    return { text: `Passation : Claude écrit ${ETAT_FILE}…` }
   })
 
   on('command.run', { command: 'tokens-reset' }, async $ => {

@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { BIG_IMAGE_BYTES, agentDefs, judgeMedia, quietCommand } from '../hooks/media'
+import { BIG_IMAGE_BYTES, agentDefs, judgeMedia, passationPrompt, quietCommand } from '../hooks/media'
 
 const S = '/p/scripts/media.py'
 
@@ -36,9 +36,19 @@ test('PyInstaller runs at WARN unless a level is already set', () => {
   expect(quietCommand('pyinstaller --log-level DEBUG app.py')).toBe('pyinstaller --log-level DEBUG app.py')
 })
 
-test('the three subagents point at the scripts shipped with the mod', () => {
+test('the subagents point at the scripts shipped with the mod', () => {
   const defs = agentDefs('/p')
-  expect(defs.map(d => d.name)).toEqual(['media', 'setup-exe', 'lecteur'])
-  expect(defs[0]?.prompt).toContain('/p/scripts/media.py')
-  expect(defs[1]?.prompt).toContain('/p/scripts/build_setup.py')
+  expect(defs.map(d => d.name)).toEqual(['media', 'image', 'setup-exe', 'lecteur'])
+  expect(defs[0]?.prompt).toContain('/p/scripts/media.py" monter')
+  expect(defs[1]?.prompt).toContain('/p/scripts/generer.py" comfy')
+  expect(defs[1]?.description).toContain('demander à l\'utilisateur la voie')
+  expect(defs[2]?.prompt).toContain('/p/scripts/build_setup.py')
+})
+
+test('the hand-over asks for ETAT.md without rereading files, and keeps the note', () => {
+  const text = passationPrompt('tester sur la tablette de Clovis')
+  expect(text).toContain('ETAT.md')
+  expect(text).toContain('ne relis aucun fichier')
+  expect(text).toContain('tester sur la tablette de Clovis')
+  expect(passationPrompt('')).not.toContain('À retenir en plus')
 })
