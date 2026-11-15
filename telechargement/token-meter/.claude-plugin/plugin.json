@@ -1,6 +1,6 @@
 {
   "name": "token-meter",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Widget de tokens, garde-fous, /passation, sous-agents locaux : montage automatique, génération d'images (ComfyUI, fiche Gemini, API), setup.exe, lecture de gros volumes.",
   "types": "./types/index.d.ts"
 }

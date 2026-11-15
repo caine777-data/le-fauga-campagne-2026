@@ -1,4 +1,4 @@
-# Brief : économie de tokens (token-meter 0.4.1)
+# Brief : économie de tokens (token-meter 0.4.2)
 
 *Mis à jour le 15/11/2026. Branche `claude/token-savings-media-local-5bq1t9`.*
 
@@ -18,7 +18,7 @@
 - **Génération d'image** : Claude te demande la voie à chaque fois (local ComfyUI / fiche à coller dans Gemini / API payante).
 - **Montage** : entièrement automatique, en local (plus de CapCut).
 - **`/passation`** : oui. Guide des connecteurs : non.
-- **Romans** : aucune relecture « à la va-vite ». Le relecteur tourne sur le même modèle que la conversation, lit tout, et le mod vérifie qu'il n'a rien sauté.
+- **Romans** : aucune relecture « à la va-vite ». Le relecteur tourne sur le même modèle que la conversation, charge d'abord les skills d'auteur et de canon du roman (outil Skill), lit tout, et le mod vérifie qu'il n'a rien sauté.
 
 ## Ce qui existe maintenant
 
@@ -35,6 +35,7 @@
 ## Testé / pas testé
 
 - Testé ici : toutes les commandes `media.py` (dont un montage 9:16 vérifié à l'œil), `build_setup.py` jusqu'à un vrai setup.exe NSIS, `generer.py comfy` contre un faux serveur ComfyUI, `fiche` et `entrants`, plus les 29 tests du mod (dont un relecteur qui saute 400 lignes et se fait arrêter).
+- Essai réel (session `claude -p` avec le mod) : le relecteur a chargé une skill, lu 3 chapitres à 100 %, et trouvé les deux incohérences cachées (yeux gris → bleus, cicatrice gauche → droite), avec citations exactes et sans fausse alerte.
 - **À tester chez toi** : ComfyUI réel (`generer.py comfy --verifier`), Inno Setup, l'API Gemini (le nom du modèle peut changer : option `--modele`), et les sous-agents et `/passation` dans une vraie session.
 
 ## Pour installer
